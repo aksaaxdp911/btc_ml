@@ -345,7 +345,7 @@ canvas { border-radius: 8px; }
 
 <div class="header">
   <div>
-    <div class="logo">saxophone<span class="slash">/</span><em>machine learning</em> predictor</div>
+    <div class="logo">axaphia<span class="slash">/</span><em>machine learning</em> predictor</div>
     <div style="font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:1px">BTCUSDT · 4-Hour Horizon · Ensemble Model</div>
   </div>
   <div class="header-right">
