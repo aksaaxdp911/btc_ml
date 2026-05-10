@@ -113,7 +113,7 @@ DASHBOARD_HTML = r"""
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>saxophone / ML Predictor</title>
+<title>axaphia / ML Analyst</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
@@ -204,7 +204,7 @@ tr:hover td{background:#fdf8f5;}
 
 <div class="header">
   <div>
-    <div class="logo">saxophone<span class="slash">/</span><em>machine learning</em> predictor</div>
+    <div class="logo">axaphia<span class="slash">/</span><em>machine learning</em> analyst</div>
     <div style="font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:1px">BTCUSDT · 4-Hour Horizon · Ensemble Model</div>
   </div>
   <div class="header-right">
