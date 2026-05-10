@@ -5,6 +5,7 @@ from dashboard.live_price import get_live_price
 from config import SYMBOL
 import pandas as pd
 
+
 app = Flask(__name__)
 
 def query(sql):
