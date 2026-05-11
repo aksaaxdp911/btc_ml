@@ -5,7 +5,6 @@ from dashboard.live_price import get_live_price
 from config import SYMBOL
 import pandas as pd
 
-
 app = Flask(__name__)
 
 def query(sql):
@@ -430,3 +429,286 @@ setInterval(()=>{fetchLatest();fetchHistory();fetchAccuracy();fetchChart();},600
 
 def run_dashboard(port=8080):
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+
+# ── Analytics ───────────────────────────────────────────────────────────────
+
+@app.route("/analytics")
+def analytics_page():
+    return render_template_string(ANALYTICS_HTML)
+
+@app.route("/api/analytics")
+def api_analytics():
+    from dashboard.analytics import get_analytics_data
+    return jsonify(get_analytics_data())
+
+
+ANALYTICS_HTML = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>axaphia / Analytics</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#fdf8f5;--surface:#fff;--border:#ede8e3;--text:#2d2420;--muted:#9e8f87;
+  --rose:#c4788a;--blush:#e8a0b0;--sage:#7a9e8e;--gold:#c49a4e;--lavender:#9b8ec4;
+  --up:#5a9e7a;--down:#c4788a;--side:#c49a4e;
+  --shadow:0 2px 16px rgba(45,36,32,0.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-weight:300;padding:28px 32px;}
+.header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border);}
+.logo{font-family:'DM Serif Display',serif;font-size:24px;letter-spacing:-0.5px;}
+.logo em{font-style:italic;color:var(--rose);}
+.logo .slash{color:var(--muted);margin:0 4px;}
+.nav{display:flex;gap:8px;}
+.nav a{padding:6px 16px;border-radius:999px;font-size:12px;text-decoration:none;color:var(--muted);border:1px solid var(--border);transition:all 0.2s;}
+.nav a:hover,.nav a.active{background:var(--rose);border-color:var(--rose);color:white;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px;}
+.grid1{margin-bottom:20px;}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr;}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px;box-shadow:var(--shadow);}
+.card-label{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:20px;font-weight:500;}
+
+/* Overall stat */
+.overall-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:20px;}
+@media(max-width:700px){.overall-grid{grid-template-columns:1fr 1fr;}}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:var(--shadow);text-align:center;}
+.stat-num{font-family:'DM Serif Display',serif;font-size:40px;letter-spacing:-1px;line-height:1;margin-bottom:4px;}
+.stat-lbl{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+
+/* Bar rows */
+.bar-row{margin-bottom:18px;}
+.bar-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.bar-name{font-size:13px;}
+.bar-meta{font-size:11px;color:var(--muted);}
+.bar-track{background:var(--border);border-radius:999px;height:10px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:999px;transition:width 1s cubic-bezier(.4,0,.2,1);}
+.bar-acc{font-family:'DM Serif Display',serif;font-size:20px;margin-left:12px;min-width:52px;text-align:right;}
+
+.fill-good{background:linear-gradient(90deg,var(--up),#8ec4a8);}
+.fill-mid{background:linear-gradient(90deg,var(--gold),#dbb96a);}
+.fill-bad{background:linear-gradient(90deg,var(--down),var(--blush));}
+.fill-label-naik{background:linear-gradient(90deg,var(--up),#8ec4a8);}
+.fill-label-side{background:linear-gradient(90deg,var(--gold),#dbb96a);}
+.fill-label-down{background:linear-gradient(90deg,var(--down),var(--blush));}
+
+/* Insight box */
+.insight{background:linear-gradient(135deg,#fff8f9,#f9f5ff);border:1px solid #ede0ea;border-radius:16px;padding:20px;margin-bottom:20px;}
+.insight-title{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--rose);margin-bottom:12px;font-weight:500;}
+.insight-item{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:13px;line-height:1.6;}
+.insight-item:last-child{margin-bottom:0;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--rose);margin-top:7px;flex-shrink:0;}
+
+.loading{text-align:center;padding:60px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">axaphia<span class="slash">/</span><em>machine learning</em> analyst</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:1px">Performance Analytics · BTCUSDT</div>
+  </div>
+  <nav class="nav">
+    <a href="/">Dashboard</a>
+    <a href="/analytics" class="active">Analytics</a>
+  </nav>
+</div>
+
+<div id="main-content">
+  <div class="loading">Loading analytics...</div>
+</div>
+
+<script>
+const COLORS = {
+  "Naik": "var(--up)", "Sideways": "var(--gold)", "Turun": "var(--down)",
+  ">70%": "var(--up)", "50–70%": "var(--gold)", "<50%": "var(--down)",
+  "Bullish/Trending": "var(--up)", "Sideways": "var(--gold)", "Bearish/Volatile": "var(--down)",
+};
+
+function colorFor(acc) {
+  return acc >= 60 ? "var(--up)" : acc >= 40 ? "var(--gold)" : "var(--down)";
+}
+
+function fillFor(name) {
+  if (name==="Naik") return "fill-label-naik";
+  if (name==="Turun") return "fill-label-down";
+  if (name===">70%"||name==="Bullish/Trending") return "fill-good";
+  if (name==="50–70%"||name==="Sideways") return "fill-mid";
+  return "fill-bad";
+}
+
+function barRows(items, nameKey) {
+  return items.map(d => `
+    <div class="bar-row">
+      <div class="bar-head">
+        <span class="bar-name">${d[nameKey]}</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="bar-meta">${d.correct}/${d.total} correct</span>
+          <span class="bar-acc" style="color:${colorFor(d.accuracy)}">${d.accuracy}%</span>
+        </div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill ${fillFor(d[nameKey])}" style="width:${d.accuracy}%"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function generateInsights(data) {
+  const insights = [];
+
+  // Best label
+  const bestLabel = [...data.by_label].sort((a,b)=>b.accuracy-a.accuracy)[0];
+  if (bestLabel) insights.push(`Model paling akurat saat prediksi <strong>${bestLabel.label}</strong> — ${bestLabel.accuracy}% benar dari ${bestLabel.total} prediksi.`);
+
+  // Confidence insight
+  const high = data.by_conf.find(d=>d.range===">70%");
+  const low  = data.by_conf.find(d=>d.range==="<50%");
+  if (high && low) {
+    if (high.accuracy > low.accuracy + 15)
+      insights.push(`Prediksi dengan confidence >70% jauh lebih reliable (${high.accuracy}%) dibanding <50% (${low.accuracy}%). Fokus pada sinyal confidence tinggi.`);
+    else
+      insights.push(`Confidence belum jadi pembeda yang kuat. Model masih perlu lebih banyak data untuk kalibrasi confidence.`);
+  }
+
+  // Regime insight
+  const bestRegime = [...data.by_regime].sort((a,b)=>b.accuracy-a.accuracy)[0];
+  if (bestRegime) insights.push(`Performa terbaik di regime <strong>${bestRegime.regime}</strong> (${bestRegime.accuracy}%). Pertimbangkan untuk hanya trade saat regime ini aktif.`);
+
+  // Overall
+  if (data.overall < 40)
+    insights.push(`Akurasi overall ${data.overall}% masih di bawah target. Model butuh lebih banyak data training — akan membaik setelah weekly retraining.`);
+  else if (data.overall >= 55)
+    insights.push(`Akurasi overall ${data.overall}% sudah di atas baseline random (33%). Model mulai menunjukkan edge yang nyata.`);
+
+  return insights.map(i=>`<div class="insight-item"><div class="dot"></div><div>${i}</div></div>`).join("");
+}
+
+async function load() {
+  const d = await fetch("/api/analytics").then(r=>r.json()).catch(()=>({}));
+  const el = document.getElementById("main-content");
+
+  if (!d || d.error || d.total === 0) {
+    el.innerHTML = `<div class="loading">${d.error || "Belum ada data yang cukup untuk dianalisis."}<br><br><span style="font-size:11px">Prediksi dievaluasi 4 jam setelah dibuat. Coba lagi nanti.</span></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <!-- Overall stats -->
+    <div class="overall-grid">
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--lavender)">${d.overall}%</div>
+        <div class="stat-lbl">Overall Accuracy</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--text)">${d.total}</div>
+        <div class="stat-lbl">Predictions Evaluated</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--up)">${d.by_label.find(x=>x.label==="Sideways")?.accuracy||"—"}%</div>
+        <div class="stat-lbl">Sideways Accuracy</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--rose)">${d.by_conf.find(x=>x.range===">70%")?.accuracy||"—"}%</div>
+        <div class="stat-lbl">High Conf. Accuracy</div>
+      </div>
+    </div>
+
+    <!-- Insights -->
+    <div class="insight">
+      <div class="insight-title">Key Insights</div>
+      ${generateInsights(d)}
+    </div>
+
+    <!-- By label + by confidence -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-label">Accuracy by Prediction Label</div>
+        ${barRows(d.by_label, "label")}
+      </div>
+      <div class="card">
+        <div class="card-label">Accuracy by Confidence Range</div>
+        ${barRows(d.by_conf, "range")}
+      </div>
+    </div>
+
+    <!-- By regime + by hour -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-label">Accuracy by Market Regime</div>
+        ${barRows(d.by_regime, "regime")}
+      </div>
+      <div class="card">
+        <div class="card-label">Accuracy by Hour (UTC)</div>
+        ${d.by_hour.length ? barRows(d.by_hour.sort((a,b)=>b.accuracy-a.accuracy).slice(0,8), "label") : '<div style="color:var(--muted);font-size:13px">Not enough data yet</div>'}
+      </div>
+    </div>
+
+    <!-- Trend chart -->
+    <div class="card grid1">
+      <div class="card-label">Rolling Accuracy Trend (10-prediction window)</div>
+      <canvas id="trend-chart" height="80"></canvas>
+    </div>
+  `;
+
+  // Draw trend chart
+  if (d.trend && d.trend.length > 1) {
+    const ctx = document.getElementById("trend-chart").getContext("2d");
+    const grad = ctx.createLinearGradient(0,0,0,160);
+    grad.addColorStop(0,"rgba(155,142,196,0.2)");
+    grad.addColorStop(1,"rgba(155,142,196,0)");
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: d.trend.map((_,i)=>i+1),
+        datasets: [{
+          data: d.trend.map(t=>t.y),
+          borderColor: "#9b8ec4",
+          borderWidth: 2,
+          backgroundColor: grad,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+        }, {
+          data: Array(d.trend.length).fill(33.3),
+          borderColor: "rgba(196,120,138,0.4)",
+          borderWidth: 1,
+          borderDash: [4,4],
+          fill: false,
+          pointRadius: 0,
+          label: "Random baseline (33%)",
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => c.parsed.y.toFixed(1)+"%" } }
+        },
+        scales: {
+          x: { display: false },
+          y: {
+            min: 0, max: 100,
+            grid: { color: "rgba(237,232,227,0.5)" },
+            ticks: { color: "#9e8f87", callback: v=>v+"%" },
+            border: { display: false }
+          }
+        }
+      }
+    });
+  }
+}
+
+load();
+</script>
+</body>
+</html>
+"""
