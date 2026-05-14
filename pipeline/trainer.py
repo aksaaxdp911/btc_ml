@@ -1,6 +1,5 @@
 """
-Trainer — jalankan training semua model secara berurutan.
-Dipanggil manual atau dijadwalkan setelah data cukup.
+Trainer — regression, dual horizon.
 """
 from loguru import logger
 from models.xgboost_model import train_xgboost, load_features
@@ -9,47 +8,43 @@ from models.lstm_model    import train_lstm
 
 
 def run_training():
-    logger.info("=" * 60)
-    logger.info("PHASE 3 — Model Training")
-    logger.info("=" * 60)
+    logger.info("="*60)
+    logger.info("PHASE 3 — Regression Training (8h + 24h)")
+    logger.info("="*60)
 
     df = load_features()
-    logger.info(f"Loaded {len(df)} rows of features")
+    logger.info(f"Loaded {len(df)} rows")
 
     if len(df) < 500:
-        logger.warning(f"Data masih sedikit ({len(df)} rows). Training ditunda.")
-        logger.info("Tunggu sampai minimal 500 jam data terkumpul (~21 hari).")
+        logger.warning(f"Data kurang ({len(df)} rows). Butuh min 500.")
         return
 
-    # 1. Train HMM dulu (regime dipakai oleh ensemble)
     logger.info("▶ Training HMM...")
     try:
         train_hmm(df)
-        logger.info("✓ HMM selesai")
+        logger.info("✓ HMM done")
     except Exception as e:
-        logger.error(f"✗ HMM failed: {e}")
+        logger.error(f"✗ HMM: {e}")
 
-    # 2. Train XGBoost
-    logger.info("▶ Training XGBoost...")
+    logger.info("▶ Training XGBoost (8h + 24h)...")
     try:
-        result = train_xgboost(df)
-        if result:
-            _, _, acc = result
-            logger.info(f"✓ XGBoost selesai — accuracy: {acc:.4f}")
+        r = train_xgboost(df)
+        if r:
+            for h, m in r.items():
+                logger.info(f"  ✓ XGB {h}h — MAE:{m['mae']:.3f}% R²:{m['r2']:.4f}")
     except Exception as e:
-        logger.error(f"✗ XGBoost failed: {e}")
+        logger.error(f"✗ XGBoost: {e}")
 
-    # 3. Train LSTM
-    logger.info("▶ Training LSTM...")
+    logger.info("▶ Training LSTM (8h + 24h)...")
     try:
-        result = train_lstm(df)
-        if result:
-            _, _, _, acc = result
-            logger.info(f"✓ LSTM selesai — accuracy: {acc:.4f}")
+        r = train_lstm(df)
+        if r:
+            for h, m in r.items():
+                logger.info(f"  ✓ LSTM {h}h — MAE:{m['mae']:.3f}% R²:{m['r2']:.4f}")
     except Exception as e:
-        logger.error(f"✗ LSTM failed: {e}")
+        logger.error(f"✗ LSTM: {e}")
 
-    logger.info("Phase 3 selesai. Semua model siap digunakan.")
+    logger.info("Training selesai. Semua model siap.")
 
 
 if __name__ == "__main__":
