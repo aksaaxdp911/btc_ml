@@ -1,44 +1,57 @@
 """
-Phase 4 — Live Prediction
-Ambil data terbaru dari DB, jalankan ensemble, return prediksi.
+Live Prediction — Regression + Dual Horizon
 """
 import json
 import pandas as pd
 from loguru import logger
 from sqlalchemy import text
 
-from database.connection import engine, init_db
-from pipeline.feature_engineering import build_features
+from database.connection import engine
 from models.ensemble import ensemble_predict
-from config import SYMBOL
+from config import SYMBOL, PREDICTION_HORIZONS
+
+
+def create_predictions_table():
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                id           SERIAL PRIMARY KEY,
+                symbol       VARCHAR(20),
+                ts           VARCHAR(50),
+                horizon_h    INTEGER,
+                predicted_pct FLOAT,
+                signal       VARCHAR(20),
+                direction    VARCHAR(10),
+                regime       VARCHAR(30),
+                xgb_pred     FLOAT,
+                lstm_pred    FLOAT,
+                created_at   TIMESTAMP DEFAULT NOW(),
+                UNIQUE(symbol, ts, horizon_h)
+            )
+        """))
+        conn.commit()
 
 
 def get_latest_prediction() -> dict:
-    """Ambil prediksi terbaru — gunakan 24 jam terakhir data."""
     try:
-        # Load features dari DB
         with engine.connect() as conn:
             df = pd.read_sql(text(f"""
                 SELECT * FROM features
-                WHERE symbol = '{SYMBOL}'
-                ORDER BY ts DESC
-                LIMIT 100
+                WHERE symbol='{SYMBOL}'
+                ORDER BY ts DESC LIMIT 100
             """), conn)
 
         if df.empty or len(df) < 24:
-            return {"error": f"Data tidak cukup: {len(df)} rows (butuh min 24)"}
+            return {"error": f"Data tidak cukup: {len(df)} rows"}
 
-        # Sort ascending untuk LSTM sequence
         df = df.sort_values("ts").reset_index(drop=True)
-
-        # Drop kolom non-fitur
-        exclude = {"ts", "symbol", "label", "close"}
-        feature_cols = [c for c in df.columns if c not in exclude]
-        df_feat = df[feature_cols + ["close"]].copy()
+        exclude = {"ts","symbol"} | {f"target_{h}h" for h in PREDICTION_HORIZONS}
+        feat_cols = [c for c in df.columns if c not in exclude]
+        df_feat = df[feat_cols + ["close"]].copy()
 
         result = ensemble_predict(df_feat)
         result["timestamp"] = str(df["ts"].iloc[-1])
-        result["data_points"] = len(df)
+        result["current_price"] = float(df["close"].iloc[-1])
         return result
 
     except Exception as e:
@@ -47,68 +60,52 @@ def get_latest_prediction() -> dict:
 
 
 def save_prediction(result: dict):
-    """Simpan hasil prediksi ke tabel predictions."""
-    if "error" in result:
+    if "error" in result or "horizons" not in result:
         return
     try:
         with engine.connect() as conn:
-            conn.execute(text("""
-                INSERT INTO predictions
-                (symbol, ts, prediction, label, confidence,
-                 regime, prob_turun, prob_sideways, prob_naik)
-                VALUES
-                (:symbol, :ts, :prediction, :label, :confidence,
-                 :regime, :prob_turun, :prob_sideways, :prob_naik)
-                ON CONFLICT (symbol, ts) DO NOTHING
-            """), {
-                "symbol":       SYMBOL,
-                "ts":           result["timestamp"],
-                "prediction":   result["prediction"],
-                "label":        result["label"],
-                "confidence":   result["confidence"],
-                "regime":       result["regime"],
-                "prob_turun":   result["probabilities"]["turun"],
-                "prob_sideways": result["probabilities"]["sideways"],
-                "prob_naik":    result["probabilities"]["naik"],
-            })
+            for h, hr in result["horizons"].items():
+                conn.execute(text("""
+                    INSERT INTO predictions
+                    (symbol, ts, horizon_h, predicted_pct, signal, direction,
+                     regime, xgb_pred, lstm_pred)
+                    VALUES
+                    (:symbol, :ts, :horizon_h, :predicted_pct, :signal, :direction,
+                     :regime, :xgb_pred, :lstm_pred)
+                    ON CONFLICT (symbol, ts, horizon_h) DO NOTHING
+                """), {
+                    "symbol":        SYMBOL,
+                    "ts":            result["timestamp"],
+                    "horizon_h":     int(h),
+                    "predicted_pct": hr["predicted_pct"],
+                    "signal":        hr["signal"],
+                    "direction":     hr["direction"],
+                    "regime":        result["regime"],
+                    "xgb_pred":      hr["xgb_pred"],
+                    "lstm_pred":     hr["lstm_pred"],
+                })
             conn.commit()
+        logger.info("Predictions saved.")
     except Exception as e:
-        logger.error(f"Save prediction error: {e}")
-
-
-def create_predictions_table():
-    """Buat tabel predictions kalau belum ada."""
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS predictions (
-                id          SERIAL PRIMARY KEY,
-                symbol      VARCHAR(20),
-                ts          VARCHAR(50),
-                prediction  VARCHAR(20),
-                label       INTEGER,
-                confidence  FLOAT,
-                regime      VARCHAR(30),
-                prob_turun  FLOAT,
-                prob_sideways FLOAT,
-                prob_naik   FLOAT,
-                created_at  TIMESTAMP DEFAULT NOW(),
-                UNIQUE(symbol, ts)
-            )
-        """))
-        conn.commit()
-    logger.info("Predictions table ready.")
+        logger.error(f"Save error: {e}")
 
 
 def run_prediction():
-    """Entry point — jalankan prediksi dan print hasilnya."""
     create_predictions_table()
     result = get_latest_prediction()
     save_prediction(result)
 
     print("\n" + "="*50)
-    print("BTC PREDICTION RESULT")
-    print("="*50)
-    print(json.dumps(result, indent=2))
+    if "error" in result:
+        print(f"ERROR: {result['error']}")
+    else:
+        print(f"Regime: {result['regime']}")
+        for h, hr in result["horizons"].items():
+            print(f"\n{h}h Horizon:")
+            print(f"  Prediksi: {hr['predicted_pct']:+.3f}%")
+            print(f"  Signal:   {hr['signal']}")
+            print(f"  XGBoost:  {hr['xgb_pred']:+.3f}%")
+            print(f"  LSTM:     {hr['lstm_pred']:+.3f}%")
     print("="*50 + "\n")
     return result
 
