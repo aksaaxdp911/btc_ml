@@ -208,6 +208,10 @@ tr:hover td{background:#fdf8f5;}
     <div style="font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:1px">BTCUSDT · 4-Hour Horizon · Ensemble Model</div>
   </div>
   <div class="header-right">
+    <div style="display:flex;gap:8px;margin-right:16px;">
+      <a href="/" style="padding:6px 16px;border-radius:999px;font-size:12px;text-decoration:none;background:var(--rose);border:1px solid var(--rose);color:white;font-family:DM Sans,sans-serif;">Dashboard</a>
+      <a href="/analytics" style="padding:6px 16px;border-radius:999px;font-size:12px;text-decoration:none;color:var(--muted);border:1px solid var(--border);font-family:DM Sans,sans-serif;">Analytics</a>
+    </div>
     <div><span class="live-dot"></span>Live</div>
     <div id="last-update">—</div>
   </div>
