@@ -1,5 +1,6 @@
 """
 Trainer — regression, dual horizon.
+Setelah training, simpan model ke PostgreSQL supaya persist.
 """
 from loguru import logger
 from models.xgboost_model import train_xgboost, load_features
@@ -43,6 +44,15 @@ def run_training():
                 logger.info(f"  ✓ LSTM {h}h — MAE:{m['mae']:.3f}% R²:{m['r2']:.4f}")
     except Exception as e:
         logger.error(f"✗ LSTM: {e}")
+
+    # Simpan semua model ke PostgreSQL
+    logger.info("▶ Saving models to PostgreSQL...")
+    try:
+        from models.model_store import save_all_models
+        save_all_models()
+        logger.info("✓ Models saved to DB")
+    except Exception as e:
+        logger.error(f"✗ Save to DB failed: {e}")
 
     logger.info("Training selesai. Semua model siap.")
 
