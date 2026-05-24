@@ -40,14 +40,22 @@ def ensemble_predict(df: pd.DataFrame) -> dict:
     # Load feature cols
     _, feature_cols = load_xgboost(PREDICTION_HORIZONS[0])
 
+    # Cek apakah model sudah ada
+    models_ready = feature_cols is not None
+    if not models_ready:
+        logger.warning("Model belum ada — prediksi akan 0.000%. Jalankan training dulu.")
+
     results = {}
     for h in PREDICTION_HORIZONS:
         # XGBoost prediction
         xgb_pred = 0.0
-        if feature_cols:
+        if models_ready:
             avail = [c for c in feature_cols if c in df.columns]
-            X = df[avail].iloc[[-1]].values
-            xgb_pred = float(predict_xgboost(X, h)[0])
+            if avail:
+                X = df[avail].iloc[[-1]].values
+                xgb_pred = float(predict_xgboost(X, h)[0])
+            else:
+                logger.warning(f"XGBoost {h}h: tidak ada feature yang cocok di DataFrame")
 
         # LSTM prediction
         lstm_pred = predict_lstm(df, h)
@@ -72,9 +80,10 @@ def ensemble_predict(df: pd.DataFrame) -> dict:
         )
 
     return {
-        "horizons":     results,
-        "regime":       regime_names[current_regime],
-        "regime_id":    current_regime,
+        "horizons":      results,
+        "regime":        regime_names[current_regime],
+        "regime_id":     current_regime,
         "model_weights": {"xgboost": xgb_w, "lstm": lstm_w},
         "threshold_pct": SIGNAL_THRESHOLD * 100,
+        "model_trained": models_ready,
     }
