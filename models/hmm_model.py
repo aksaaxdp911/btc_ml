@@ -66,15 +66,21 @@ def predict_regime(df: pd.DataFrame) -> np.ndarray:
     regimes = model.predict(X)
 
     # Normalize: pastikan regime 2 = bullish (mean return tertinggi)
+    ret = df["close"].pct_change().fillna(0).values
     means = []
     for r in range(3):
         mask = regimes == r
         if mask.sum() > 0:
-            ret = df["close"].pct_change().fillna(0).values
             means.append((r, ret[mask].mean()))
+        else:
+            means.append((r, 0.0))  # default jika regime kosong
 
     means.sort(key=lambda x: x[1])
-    remap = {means[0][0]: 0, means[1][0]: 1, means[2][0]: 2}
+
+    # Pastikan semua 3 regime ada di remap
+    remap = {}
+    for rank, (regime_id, _) in enumerate(means):
+        remap[regime_id] = rank
     regimes = np.array([remap[r] for r in regimes])
 
     logger.info(f"Regime distribution: {np.unique(regimes, return_counts=True)}")
