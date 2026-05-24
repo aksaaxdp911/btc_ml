@@ -17,9 +17,16 @@ MODEL_PATH = "model_artifacts/hmm_model.pkl"
 def build_hmm_features(df: pd.DataFrame) -> np.ndarray:
     """Buat feature matrix untuk HMM dari price data."""
     feats = pd.DataFrame(index=df.index)
-    feats["returns"]  = df["close"].pct_change().fillna(0)
-    feats["vol"]      = feats["returns"].rolling(8).std().fillna(0)
-    feats["atr_pct"]  = df["atr_pct"].fillna(0) if "atr_pct" in df.columns else 0
+    feats["returns"] = df["close"].pct_change().fillna(0)
+    feats["vol"]     = feats["returns"].rolling(8).std().fillna(0)
+    if "atr_pct" in df.columns:
+        atr = df["atr_pct"]
+        # Pastikan Series, bukan DataFrame (kalau ada duplicate columns)
+        if isinstance(atr, pd.DataFrame):
+            atr = atr.iloc[:, 0]
+        feats["atr_pct"] = atr.fillna(0)
+    else:
+        feats["atr_pct"] = 0.0
     return feats.values
 
 
