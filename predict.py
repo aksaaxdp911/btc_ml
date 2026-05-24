@@ -47,7 +47,10 @@ def get_latest_prediction() -> dict:
         df = df.sort_values("ts").reset_index(drop=True)
         exclude = {"ts","symbol"} | {f"target_{h}h" for h in PREDICTION_HORIZONS}
         feat_cols = [c for c in df.columns if c not in exclude]
-        df_feat = df[feat_cols + ["close"]].copy()
+        # Pastikan close ada tapi tidak duplikat
+        if "close" not in feat_cols:
+            feat_cols = feat_cols + ["close"]
+        df_feat = df[feat_cols].copy()
 
         result = ensemble_predict(df_feat)
         result["timestamp"] = str(df["ts"].iloc[-1])
